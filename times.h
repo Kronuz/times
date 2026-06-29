@@ -22,7 +22,14 @@
 
 #pragma once
 
+// HAVE_CLOCK_GETTIME comes from this library's own CMake feature-detection
+// (times_config.h), generated for a standalone build. A consumer that compiles
+// times.cc into its own build (e.g. via FetchContent populate, without running
+// this library's CMakeLists) will not have times_config.h; it should define
+// HAVE_CLOCK_GETTIME itself. Guard the include so both paths work.
+#if __has_include("times_config.h")
 #include "times_config.h"          // for HAVE_CLOCK_GETTIME
+#endif
 
 #include <sys/time.h>
 #include <time.h>                  // for clock_gettime, CLOCK_REALTIME

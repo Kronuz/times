@@ -20,9 +20,10 @@ The surface:
 - **`set_now()`** refreshes an existing `timespec_t` from the clock.
 - **`as_double()`** collapses it back to a `double` count of seconds.
 - **`clear()`** zeroes it.
-- **Arithmetic:** `+`, `-`, `*`, `/` and their in-place forms, with `_adjust()`
-  normalizing the nanosecond field back into the `[0, 1e9)` range after every
-  operation so a carry or borrow lands in `tv_sec`.
+- **Arithmetic:** `+` and `-` between two `timespec_t`, and `*` / `/` to scale a
+  duration by a scalar factor (a `double`). `_adjust()` normalizes the nanosecond
+  field back into the `[0, 1e9)` range after every operation so a carry or borrow
+  lands in `tv_sec`.
 - **Comparisons:** the full `< <= > >= == !=` set, both between two `timespec_t`
   and with a plain `double` on the left-hand side (`0.5 < ts`).
 

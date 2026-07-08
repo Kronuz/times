@@ -128,27 +128,29 @@ struct timespec_t : public timespec {
 		return ts;
 	}
 
-	inline void operator*=(const timespec_t& other) {
-		tv_nsec *= other.tv_nsec;
-		tv_sec *= other.tv_sec;
+	// Scale a duration by a scalar factor. `*` and `/` operate on the whole
+	// value (via as_double()), not on the sec/nsec fields separately, so the
+	// result is a physically meaningful multiple/fraction of the duration;
+	// _adjust() then re-normalizes the nanosecond field into [0, 1e9).
+	inline void operator*=(double factor) {
+		*this = timespec_t(as_double() * factor);
 		_adjust();
 	}
 
-	inline timespec_t operator*(const timespec_t& other) const {
+	inline timespec_t operator*(double factor) const {
 		timespec_t ts = *this;
-		ts *= other;
+		ts *= factor;
 		return ts;
 	}
 
-	inline void operator/=(const timespec_t& other) {
-		tv_nsec *= other.tv_nsec;
-		tv_sec *= other.tv_sec;
+	inline void operator/=(double factor) {
+		*this = timespec_t(as_double() / factor);
 		_adjust();
 	}
 
-	inline timespec_t operator/(const timespec_t& other) const {
+	inline timespec_t operator/(double factor) const {
 		timespec_t ts = *this;
-		ts *= other;
+		ts /= factor;
 		return ts;
 	}
 

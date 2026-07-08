@@ -30,15 +30,17 @@ On top of that it adds value semantics:
 
 ## The nanosecond carry
 
-Arithmetic is where the type earns its keep. `+=`, `-=`, `*=`, `/=` operate on the
-two fields directly and then call `_adjust()`, which walks `tv_nsec` back into the
+Arithmetic is where the type earns its keep. `+=` and `-=` operate on the two
+fields directly and then call `_adjust()`, which walks `tv_nsec` back into the
 `[0, 1e9)` range: while it is negative it adds a second's worth of nanoseconds and
 decrements `tv_sec` (a borrow), and while it is at or past `1e9` it subtracts and
 increments `tv_sec` (a carry). Without this, adding `0.6 s` and `0.7 s` would leave
-`tv_nsec` at `1.3e9`, an out-of-range `timespec`. The binary operators (`+`, `-`,
-...) are written in terms of the in-place forms, so they get the same
-normalization. The test pins this by adding two sub-second values whose nanosecond
-parts overflow and checking the carry lands in `tv_sec`.
+`tv_nsec` at `1.3e9`, an out-of-range `timespec`. `*=` and `/=` take a plain
+`double` and scale the whole duration (via `as_double()`), then normalize the same
+way. The binary operators (`+`, `-`, `*`, `/`) are written in terms of the in-place
+forms, so they get the same normalization. The test pins this by adding two
+sub-second values whose nanosecond parts overflow and checking the carry lands in
+`tv_sec`.
 
 ## Comparisons
 

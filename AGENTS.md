@@ -101,19 +101,22 @@ exactly as it was when `config.h` came from the parent project.
   `3.25` won't implicitly convert in a `timespec_t` context. The free comparison
   operators exist precisely so `double`-vs-`timespec_t` comparisons still read
   naturally; don't make the constructor implicit to "simplify" that.
-- **`*` and `/` multiply the fields componentwise** (the upstream behavior, and
-  `operator/` actually calls `*=`). These are not a physically meaningful scaling
-  of a duration. They are preserved as-is from Xapiand; reach for `as_double()` and
-  plain arithmetic if you need real scaling, and don't silently "fix" the operators
-  here without reconciling upstream.
+- **`*` and `/` scale by a scalar (`double`), not by another `timespec_t`.** They
+  operate on the whole value via `as_double()` (a meaningful multiple/fraction of
+  the duration), then `_adjust()` re-normalizes `tv_nsec`. This diverges from
+  upstream Xapiand, whose `*`/`/` multiplied the sec/nsec fields componentwise and
+  whose `operator/` was a verbatim copy of `operator*` (a bug: it multiplied). The
+  fix lives here; mirror it upstream when reconciling.
 
 ## Standalone vs. Xapiand
 
 This is a standalone extraction from
 [Xapiand](https://github.com/Kronuz/Xapiand). The time logic in `times.h` and the
-Mach fallback in `times.cc` are byte-for-byte the original. The only two deltas are
-packaging, not behavior: the `config.h` -> generated `times_config.h` include swap
-described above, and the one-line anchor symbol in `times.cc` that keeps the static
-archive linkable on macOS. Keep it that way so any change here stays reconcilable
+Mach fallback in `times.cc` are close to the original, with three deltas: the
+`config.h` -> generated `times_config.h` include swap described above, the one-line
+anchor symbol in `times.cc` that keeps the static archive linkable on macOS, and the
+`*`/`/` operators, which now scale by a scalar (the upstream versions multiplied the
+fields componentwise, and `operator/` was a copy of `operator*`). Keep the rest that
+way so changes here stay reconcilable
 with upstream as a plain edit. The Mach fallback in `times.cc` carries a separate
 BSD-style copyright (MM Weiss), retained in that file.

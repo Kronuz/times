@@ -1,5 +1,7 @@
 # times
 
+[![CI](https://github.com/Kronuz/times/actions/workflows/ci.yml/badge.svg)](https://github.com/Kronuz/times/actions/workflows/ci.yml)
+
 A small **monotonic / wall-clock time** helper for C++20, extracted from
 [Xapiand](https://github.com/Kronuz/Xapiand).
 

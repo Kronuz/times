@@ -1,110 +1,83 @@
 # times
 
 [![CI](https://github.com/Kronuz/times/actions/workflows/ci.yml/badge.svg)](https://github.com/Kronuz/times/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+![C++20](https://img.shields.io/badge/C%2B%2B-20-blue.svg)
 
-A small **monotonic / wall-clock time** helper for C++20, extracted from
-[Xapiand](https://github.com/Kronuz/Xapiand).
+A `struct timespec` that behaves like a number, for C++20: read the wall clock
+into it, convert to and from seconds as a `double`, add, subtract, scale, and
+compare, with the nanosecond carry handled for you. For code that speaks
+`timespec` to system calls and wants arithmetic on it.
 
-## What it is
+![times: the wall clock into a timespec_t, to and from seconds](docs/times.svg)
 
-One header, `times.h`, plus a tiny `times.cc` for the macOS fallback. It gives
-you `timespec_t`, a thin `struct timespec` subclass that behaves like a number:
-read the clock into it, convert it to and from a `double` count of seconds, add
-and subtract intervals (with nanosecond carry handled for you), and compare two
-of them. A free `now()` returns the current realtime clock as a `timespec_t`.
+## ✨ Highlights
 
-The surface:
+- **Still a `timespec`.** `timespec_t` derives from it, so it passes straight to
+  system calls.
+- **Seconds in and out.** `timespec_t(1.5)` and `as_double()`.
+- **Arithmetic and comparisons** that normalize nanoseconds, including a `double`
+  on the left (`0.5 < ts`).
+- **`now()`** reads `CLOCK_REALTIME`, with a fallback where `clock_gettime` is
+  missing.
 
-- **`timespec_t`** derives from `timespec`, so it still has the raw `tv_sec` /
-  `tv_nsec` fields. Construct it empty (zeroed), or from a `double` number of
-  seconds (`timespec_t(3.25)` is 3 s + 250 ms).
-- **`now()`** returns a `timespec_t` set to `CLOCK_REALTIME`.
-- **`set_now()`** refreshes an existing `timespec_t` from the clock.
-- **`as_double()`** collapses it back to a `double` count of seconds.
-- **`clear()`** zeroes it.
-- **Arithmetic:** `+` and `-` between two `timespec_t`, and `*` / `/` to scale a
-  duration by a scalar factor (a `double`). `_adjust()` normalizes the nanosecond
-  field back into the `[0, 1e9)` range after every operation so a carry or borrow
-  lands in `tv_sec`.
-- **Comparisons:** the full `< <= > >= == !=` set, both between two `timespec_t`
-  and with a plain `double` on the left-hand side (`0.5 < ts`).
+## 📦 Installation
 
-## Install
-
-CMake with `FetchContent`:
+Requires a C++20 compiler and CMake 3.14 or newer; it compiles one source file.
+CI builds it on Linux (x86_64, arm64), macOS (arm64, x86_64), and FreeBSD, plus
+ASan, UBSan, and TSan builds.
 
 ```cmake
 include(FetchContent)
-FetchContent_Declare(
-  times
+FetchContent_Declare(times
   GIT_REPOSITORY https://github.com/Kronuz/times.git
-  GIT_TAG        main
-)
+  GIT_TAG        main)
 FetchContent_MakeAvailable(times)
 
-target_link_libraries(your_target PRIVATE times::times)
+target_link_libraries(my_app PRIVATE times::times)
 ```
 
-The `times` target is a small `STATIC` library: it compiles `times.cc` (which is
-empty on any platform that has `clock_gettime`, including modern macOS), requests
-`cxx_std_20`, and puts both the source dir and the generated config header on your
-include path. Then:
+## 🚀 Quick start
 
 ```cpp
 #include "times.h"
-```
 
-Requires C++20. On macOS it builds with AppleClang/libc++ or Homebrew LLVM, the
-same toolchains Xapiand uses. The header keeps its original filename, so a codebase
-that already `#include "times.h"` just needs this repo on its include path.
-
-## Usage
-
-```cpp
-#include "times.h"
 #include <cstdio>
 
-// Time a piece of work.
-timespec_t start = now();
-do_some_work();
-double secs = (now() - start).as_double();
-std::printf("took %.3f s\n", secs);
-
-// Convert to and from a plain double count of seconds.
-timespec_t deadline(1.5);          // 1 s + 500 ms
-double d = deadline.as_double();   // 1.5
-
-// Arithmetic carries the nanosecond field automatically.
-timespec_t total = timespec_t(0.6) + timespec_t(0.7);   // 1.3 s, carried
-bool soon = 0.5 < deadline;        // double on the left-hand side works too
+int main() {
+	timespec_t deadline = now() + timespec_t(1.5);   // 1.5 s from now, as a timespec
+	timespec_t total = timespec_t(0.6) + timespec_t(0.7);
+	std::printf("%.1f s\n", total.as_double());      // 1.3 s, nanoseconds carried
+	std::printf("%d\n", 0.5 < deadline);             // 1
+}
 ```
 
-## Build & test
+## 🎯 When to use it
+
+- ✅ Absolute times and timeouts for APIs that take `struct timespec`.
+- ❌ Measuring elapsed time: `now()` is the wall clock, which can jump; use
+  `std::chrono::steady_clock`.
+- ❌ New code with no `timespec` in sight: `std::chrono` is the standard choice.
+
+## 📚 Documentation
+
+- [docs/API.md](docs/API.md): `timespec_t`, `now()`, the operators, and which
+  clock it reads.
+- [ARCHITECTURE.md](ARCHITECTURE.md): normalization and the platform fallback.
+- [AGENTS.md](AGENTS.md): repository map and traps.
+
+## 🛠️ Building and testing
 
 ```sh
 cmake -B build && cmake --build build && ctest --test-dir build
 ```
 
-The test takes two clock readings around a short sleep and checks the clock does
-not run backwards and reads a plausible absolute time, measures an elapsed
-interval by subtraction (loose bounds, so no flakiness), round-trips a `double`
-through `timespec_t`, exercises the `+`/`-` nanosecond carry and borrow across the
-1e9 boundary, runs the comparison operators (member and double-lhs forms), and
-checks `clear()`. It prints `all times tests passed` and exits 0.
+## 🤝 Contributing
 
-## Provenance
+Issues and pull requests are welcome. Read [AGENTS.md](AGENTS.md) first. CI must
+pass on every platform.
 
-Extracted from [Xapiand](https://github.com/Kronuz/Xapiand). The one coupling was
-`#include "config.h"`, used solely for the `HAVE_CLOCK_GETTIME` macro. Standalone,
-the library detects `clock_gettime` itself: CMake's `check_symbol_exists` writes
-the result into a generated `times_config.h` that `times.h` includes instead. The
-`__linux__` / `__APPLE__` branches and the Mach fallback are preserved verbatim.
-The Mach fallback in `times.cc` carries a second, BSD-style copyright (MM Weiss).
-See [ARCHITECTURE.md](ARCHITECTURE.md) for the design and [AGENTS.md](AGENTS.md)
-for the repo map and invariants.
+## 📄 License
 
-## License
-
-MIT, Copyright (c) 2015-2018 Dubalu LLC. See [LICENSE](LICENSE). The macOS Mach
-`clock_gettime` fallback in `times.cc` additionally carries a BSD-style copyright
-(MM Weiss), retained in that file's header.
+MIT, Copyright (c) 2015-2018 Dubalu LLC. See [LICENSE](LICENSE). Extracted from
+[Xapiand](https://github.com/Kronuz/Xapiand).

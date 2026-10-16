@@ -1,0 +1,15 @@
+# times: a timespec that behaves like a number of seconds.
+# Render: d2 --layout elk --sketch --theme 302 docs/times.d2 docs/times.svg
+direction: right
+clock: CLOCK_REALTIME {
+  label: "CLOCK_REALTIME\n(wall clock)"
+}
+ts: timespec_t {
+  label: "timespec_t\ntv_sec · tv_nsec"
+}
+num: seconds {
+  label: "double seconds\n+ − × ÷ · < == …"
+}
+clock -> ts: "now()"
+ts -> num: "as_double()"
+num -> ts: "timespec_t(1.5)"

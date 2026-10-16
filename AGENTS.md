@@ -14,7 +14,8 @@ times_config.h.in            Template for the generated feature-detection header
 test/test.cc                 Runnable smoke test: clock advance, elapsed via subtraction, double round-trip, nanosecond carry, comparisons, clear().
 CMakeLists.txt               STATIC library `times` (+ alias times::times); check_symbol_exists + configure_file feature detection; CTest test `times`.
 LICENSE                      MIT, Copyright (c) 2015-2018 Dubalu LLC.
-README.md                    What it is, install, usage.
+README.md                    What it is, install, quick start.
+docs/API.md                  What it provides and usage.
 ARCHITECTURE.md              Internal design: timespec_t, the nanosecond carry, feature detection.
 ```
 

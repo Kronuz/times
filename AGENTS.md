@@ -16,7 +16,8 @@ test/large_seconds.cc        Seconds past int, negative values, +/-/comparisons 
 test/rvalue_compare.cc       A double on the left of a temporary and of a const timespec_t (`0.5 < now()`).
 test/diff.cc                 The constructor, * and / against the frozen old code (test/old/); the one result class that differs is listed and asserted.
 test/check.h                 CHECK(), which stays live under NDEBUG.
-CMakeLists.txt               STATIC library `times` (+ alias times::times); check_symbol_exists + configure_file feature detection; CTest tests `times`, `times_large_seconds`, `times_rvalue_compare`, `times_diff`, and `times_large_seconds` and `times_diff` again with each constructor shape forced (`_shape0` to `_shape2`).
+bench/bench.cc               The timespec_t rows, built against the library and against bench/old/times.h, the header of d762ec6 byte for byte (TIMES_BUILD_BENCH); bench/abcmp.py pairs the runs.
+CMakeLists.txt               STATIC library `times` (+ alias times::times); check_symbol_exists + configure_file feature detection; CTest tests `times`, `times_large_seconds`, `times_rvalue_compare`, `times_diff`, and `times_large_seconds` and `times_diff` again with each constructor shape forced (`_shape0` to `_shape2`), and with the bench option `times_bench_new`, `times_bench_old`.
 LICENSE                      MIT, Copyright (c) 2015-2018 Dubalu LLC.
 README.md                    What it is, install, quick start.
 docs/API.md                  What it provides and usage.
@@ -75,7 +76,19 @@ The method shared by the Kronuz libraries is in
   cmake --build build-asan && ASAN_OPTIONS=detect_leaks=1 ctest --test-dir build-asan --output-on-failure
   ```
 
-- **Not here.** The repository has no benchmark target, fuzz target or mutation script.
+- **Benchmark.** The rows of the CHANGELOG's Performance table are `bench/bench.cc`, built three
+  times: against the library (`times_bench_new`) and twice against `bench/old/times.h`, the header
+  of `d762ec6` byte for byte (`times_bench_old`, `times_bench_old2`, whose ratio to the first is
+  the A/A spread). `test/old/times_old.h` has no `now()` or comparisons, so it cannot serve two of the rows. CI
+  builds the three and runs each once, which times nothing. Time on an otherwise idle machine,
+  under a hold (the shared method above), on arm64 and x86:
+
+  ```sh
+  cmake -B build -DCMAKE_BUILD_TYPE=Release -DTIMES_BUILD_BENCH=ON && cmake --build build
+  python3 bench/abcmp.py build 5     # best of 5 rounds, binaries back to back
+  ```
+
+- **Not here.** The repository has no fuzz target or mutation script.
 
 ## Conventions
 

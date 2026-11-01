@@ -12,3 +12,5 @@ concurrency:
 jobs:
   ci:
     uses: Kronuz/cpp-libraries/.github/workflows/cmake.yml@main
+    with:
+      cmake_args: -DTIMES_BUILD_BENCH=ON  # builds the benchmark; its tests run each binary once and time nothing

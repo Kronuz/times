@@ -64,6 +64,9 @@ releases, so entries are dated.
   `|x| >= 2^31` are not run against the old code, which is undefined there.
 - The tests that use `assert` keep it live under `NDEBUG`, so the README's Release build
   runs them; the new tests use their own `CHECK`.
+- `bench/`: the benchmark rows of the Performance section, `abcmp.py`, and `old/times.h` (the
+  header of `d762ec6`, the old side of the rows), behind `TIMES_BUILD_BENCH`. CI builds them and
+  runs each binary once.
 
 ### Changed
 
@@ -97,7 +100,9 @@ Nanoseconds per operation:
 | `timespec_t(double)`, each input from the previous result, positive | 11.68 | 8.91 | 0.76 | 11.89 | 10.48 | 0.88 |
 | `timespec_t(double)`, each input from the previous result, negative | 11.76 | 8.92 | 0.76 | 11.96 | 10.56 | 0.88 |
 
-The A/A spread in this run is 2% or less. `as_double()` and `now()` run code this change does not
+The rows are `bench/bench.cc`; build it with `-DTIMES_BUILD_BENCH=ON` and run
+`python3 bench/abcmp.py build 5` (`AGENTS.md`, "Verification and benchmarks"). The A/A spread in
+this run is 2% or less. `as_double()` and `now()` run code this change does not
 touch. `+=` and `-=` are faster because `_adjust()` compares with integer constants, where
 `1e9L` made every call an x87 operation on x86 and a double conversion on arm64; `*` and `/`
 gain that and drop a second `_adjust()` after a constructor that already normalizes. The

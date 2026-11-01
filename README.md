@@ -53,7 +53,7 @@ UBSan and TSan builds.
 include(FetchContent)
 FetchContent_Declare(times
   GIT_REPOSITORY https://github.com/Kronuz/times.git
-  GIT_TAG        666dfdd85edf74a5c61c7467b4deb298697ace0c)  # or main, to track the tip
+  GIT_TAG        d808e704e37905f1631aa4c9c98b7d0dd801e35e)  # or main, to track the tip
 FetchContent_MakeAvailable(times)
 
 target_link_libraries(my_app PRIVATE times::times)

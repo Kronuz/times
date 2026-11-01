@@ -55,9 +55,9 @@ static void test_whole_seconds() {
 		0LL, 1LL, 59LL, 2147483646LL, 2147483647LL, 2147483648LL, 2147483649LL,
 		4294967295LL, 4294967296LL, 3000000000LL, 4102444800LL /* 2100-01-01 */,
 		1000000000000LL, 4503599627370496LL /* 2^52 */, 9007199254740992LL /* 2^53 */,
-		4611686018427387904LL /* 2^62 */,
+		2305843009213693952LL /* 2^61 */, 4611686018427387904LL /* 2^62 */,
 		-1LL, -59LL, -2147483647LL, -2147483648LL, -2147483649LL, -3000000000LL,
-		-1000000000000LL, -4611686018427387904LL,
+		-1000000000000LL, -2305843009213693952LL, -4611686018427387904LL /* -2^62 */,
 	};
 	for (long long v : values) {
 		timespec_t ts(static_cast<double>(v));
@@ -74,6 +74,15 @@ static void test_whole_seconds() {
 	timespec_t u(2147483648.5);
 	CHECK(u.tv_sec == 2147483648LL);
 	CHECK(u.tv_nsec == 500000000L);
+
+	// Random multiples of 1024 across the whole range (|v| < 2^62): exact in a double.
+	rng_t rng(0x5EC0ULL);
+	for (int i = 0; i < 200000; ++i) {
+		long long m = static_cast<long long>(rng.next() % (1ULL << 53)) - (1LL << 52);
+		long long v = m * 1024;
+		timespec_t w(static_cast<double>(v));
+		CHECK(static_cast<long long>(w.tv_sec) == v && w.tv_nsec == 0);
+	}
 	std::printf("times whole seconds OK: seconds past int and below it come back exact\n");
 }
 
@@ -212,10 +221,37 @@ static void test_deadline_after_2038() {
 }
 
 
+// A decimal with one to three digits gives the nanoseconds it says, on every platform: the fraction
+// is scaled in double (a long double product fell one nanosecond short for 0.3, 0.6, 0.7, ... on
+// x86). Negative values are the mirror image, folded: -0.3 s is -1 s + 700000000 ns. Sums of
+// decimals carry exactly, which a one-nanosecond error broke (0.3 + 0.7 was 999999998 ns).
+static void test_decimals() {
+	long long scale = 1;
+	for (int digits = 1; digits <= 3; ++digits) {
+		scale *= 10;
+		const long long unit = 1000000000LL / scale;   // nanoseconds per 1/scale
+		for (long long k = 1; k < scale; ++k) {
+			timespec_t ts(static_cast<double>(k) / static_cast<double>(scale));
+			CHECK(ts.tv_sec == 0);
+			CHECK(ts.tv_nsec == k * unit);
+			timespec_t neg(-static_cast<double>(k) / static_cast<double>(scale));
+			CHECK(neg.tv_sec == -1);
+			CHECK(neg.tv_nsec == 1000000000LL - k * unit);
+			CHECK(ts + neg == timespec_t(-1.0) + timespec_t(1.0));   // zero
+		}
+	}
+	CHECK(timespec_t(0.3) + timespec_t(0.7) == timespec_t(1.0));
+	CHECK(timespec_t(0.6) + timespec_t(0.7) == timespec_t(1.3));
+	CHECK((timespec_t(0.3) + timespec_t(0.7)).tv_sec == 1);
+	std::printf("times decimals OK: one to three digits give the nanoseconds they say\n");
+}
+
+
 int main() {
 	test_whole_seconds();
 	test_exact_fractions();
 	test_negative_values();
+	test_decimals();
 	test_arithmetic_beyond_int();
 	test_scaling_beyond_int();
 	test_deadline_after_2038();

@@ -16,7 +16,7 @@ test/large_seconds.cc        Seconds past int, negative values, +/-/comparisons 
 test/rvalue_compare.cc       A double on the left of a temporary and of a const timespec_t (`0.5 < now()`).
 test/diff.cc                 The constructor, * and / against the frozen old code (test/old/); the one result class that differs is listed and asserted.
 test/check.h                 CHECK(), which stays live under NDEBUG.
-CMakeLists.txt               STATIC library `times` (+ alias times::times); check_symbol_exists + configure_file feature detection; CTest tests `times`, `times_large_seconds`, `times_rvalue_compare`, `times_diff`.
+CMakeLists.txt               STATIC library `times` (+ alias times::times); check_symbol_exists + configure_file feature detection; CTest tests `times`, `times_large_seconds`, `times_rvalue_compare`, `times_diff`, and `times_large_seconds` and `times_diff` again with each constructor shape forced (`_shape0` to `_shape2`).
 LICENSE                      MIT, Copyright (c) 2015-2018 Dubalu LLC.
 README.md                    What it is, install, quick start.
 docs/API.md                  What it provides and usage.
@@ -43,7 +43,8 @@ cmake -B build -DCMAKE_CXX_COMPILER=$(brew --prefix llvm)/bin/clang++ \
 
 Expected output ends with `all times tests passed`, exit 0. The test target is
 `times_test`; the registered CTest names are `times`, `times_large_seconds`,
-`times_rvalue_compare` and `times_diff`. `test/test.cc` undefines `NDEBUG` so its
+`times_rvalue_compare`, `times_diff`, and the `_shape0` to `_shape2` forms of the second and
+fourth. `test/test.cc` undefines `NDEBUG` so its
 `assert`s run in a Release build; the other tests use `CHECK`.
 
 ## Conventions
@@ -72,8 +73,22 @@ Expected output ends with `all times tests passed`, exit 0. The test target is
   operator, call `_adjust()` the same way, or you will produce out-of-range `timespec`
   values. A negative `double` truncates to a negative `tv_nsec`, which the constructor
   borrows one second for.
-- **Seconds are a `time_t`, never an `int`.** The constructor converts the whole seconds
-  with `(time_t)`; an `int` there wraps or saturates past 2038.
+- **Seconds are 64 bits, never an `int`.** The constructor converts the whole seconds with
+  a 64-bit conversion; an `int` there wraps or saturates past 2038.
+- **The constructor has three shapes with the same value** (`TIMES_CTOR_SHAPE`): a 64-bit
+  conversion and its inverse (any target), a `trunc` instruction with 64-bit lanes (arm64),
+  and a `trunc` with a 32-bit nanosecond count (x86 with SSE4.1). They exist because the
+  compiler vectorizes a loop of constructions only with the shape that fits the target;
+  measure the array and the dependent-chain rows of `campaign/perf/time-fixround` before
+  changing one. Each value test runs every shape on every platform
+  (`times_large_seconds_shape0` to `_shape2`, `times_diff_shape0` to `_shape2`).
+- **The borrow is arithmetic, not a branch.** `ns >> 63` (or `>> 31`) selects it, so a loop
+  of constructions vectorizes; a `[[unlikely]]` branch there kept it scalar and 40% slower.
+  Rounding stays toward zero at the nanosecond, so a negative decimal is the mirror of the
+  positive one; a `floor` would be one nanosecond below the decimal for a fifth of them.
+- **The fraction is scaled in `double`, never `long double`.** A `long double` product on x86
+  came out one nanosecond short for about half of the decimals (0.3 s was 299999999 ns) and
+  differed from arm64, whose `long double` is a `double`.
 - **Comparisons go through `_timespec_cmp`:** seconds first, nanoseconds only on a
   tie. Keep both the member forms and the free `double`-lhs forms in sync; they
   must agree. The free forms take `const timespec_t&`, so a temporary binds.
@@ -119,7 +134,8 @@ exactly as it was when `config.h` came from the parent project.
   naturally; don't make the constructor implicit to "simplify" that.
 - **`*` and `/` scale by a scalar (`double`), not by another `timespec_t`.** They
   operate on the whole value via `as_double()` (a meaningful multiple/fraction of
-  the duration), then `_adjust()` re-normalizes `tv_nsec`. This diverges from
+  the duration) and build the result through the constructor, which leaves `tv_nsec` in
+  `[0, 1e9)`. This diverges from
   upstream Xapiand, whose `*`/`/` multiplied the sec/nsec fields componentwise and
   whose `operator/` was a verbatim copy of `operator*` (a bug: it multiplied). The
   fix lives here; mirror it upstream when reconciling.
@@ -133,8 +149,8 @@ Mach fallback in `times.cc` are close to the original, with four deltas: the
 anchor symbol in `times.cc` that keeps the static archive linkable on macOS, the
 `*`/`/` operators, which scale by a scalar (the upstream versions multiplied the
 fields componentwise, and `operator/` was a copy of `operator*`), and the `double`
-constructor and the `double`-lhs comparisons, which use `time_t` seconds, normalize a
-negative value and take `const timespec_t&` (see `CHANGELOG.md`). Keep the rest that
+constructor and the `double`-lhs comparisons, which use 64-bit seconds, scale the fraction in
+`double`, normalize a negative value and take `const timespec_t&` (see `CHANGELOG.md`). Keep the rest that
 way so changes here stay reconcilable
 with upstream as a plain edit. The Mach fallback in `times.cc` carries a separate
 BSD-style copyright (MM Weiss), retained in that file.

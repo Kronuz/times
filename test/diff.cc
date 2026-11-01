@@ -9,11 +9,18 @@
 //      the value does not: the old value normalized by one addition of zero is the new value.
 //   D. |x| >= 2^31: the old code converted through int, which is undefined behavior (arm64
 //      saturates, x86 gives INT_MIN). It is not executed here; test/large_seconds.cc checks the
-//      new value against 128-bit integer arithmetic and std::chrono.
+//      new value against exact integer arithmetic and std::chrono.
+//   E. where long double is wider than double (x86): the old code scaled the fraction in long
+//      double, the new one scales it in double, as arm64 always did. Most results are the same;
+//      for about half of the decimals (0.3, 0.6, 0.7, ...) the old nanoseconds were one short
+//      (299999999), and the new ones are the decimal (300000000). test_decimals asserts new == the
+//      decimal everywhere, and old == new - 1 where they differ on such a platform, old == new on
+//      the others; the other classes allow the one-nanosecond difference there.
 //   * and / with results in range: identical in every class, because the old code normalized
 //     after the constructor.
 //
 // Build via CMake: cmake -B build && cmake --build build && ctest --test-dir build
+#include <cfloat>
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
@@ -34,8 +41,21 @@ struct rng_t {
 	double unit() { return static_cast<double>(next() >> 11) / 9007199254740992.0; }   // [0, 1)
 };
 
-static bool same_fields(const timespec_t& a, const times_old::timespec_t& b) {
+// The old constructor scaled the fraction in long double and the new one scales it in double, so
+// where long double is wider (x86) a result may differ from the old one by one nanosecond (class
+// E, test_decimals). same_fields accepts that difference there; equal_fields never does.
+static const bool wide_long_double = LDBL_MANT_DIG > DBL_MANT_DIG;
+
+static bool equal_fields(const timespec_t& a, const times_old::timespec_t& b) {
 	return a.tv_sec == b.tv_sec && a.tv_nsec == b.tv_nsec;
+}
+
+static bool same_fields(const timespec_t& a, const times_old::timespec_t& b) {
+	if (equal_fields(a, b)) return true;
+	if (!wide_long_double) return false;
+	long long na = static_cast<long long>(a.tv_sec) * 1000000000LL + a.tv_nsec;
+	long long nb = static_cast<long long>(b.tv_sec) * 1000000000LL + b.tv_nsec;
+	return na - nb == 1 || nb - na == 1;
 }
 
 
@@ -71,7 +91,7 @@ static void test_constructor() {
 		CHECK(n.tv_nsec >= 0 && n.tv_nsec < 1000000000L);
 		if (o.tv_nsec < 0) {
 			++differ;
-			CHECK(!same_fields(n, o));
+			CHECK(!equal_fields(n, o));
 			times_old::timespec_t folded = o + times_old::timespec_t();
 			CHECK(same_fields(n, folded));
 			CHECK(std::fabs(n.as_double() - o.as_double()) < 1e-6);
@@ -81,6 +101,30 @@ static void test_constructor() {
 	}
 	CHECK(differ > 100000);
 	std::printf("times constructor OK: classes A and B identical, class C folded (%ld values)\n", differ);
+}
+
+
+// E. A decimal with one to three digits: new == the decimal on every platform; the old result is
+// the same except one nanosecond short where long double is wider than double.
+static void test_decimals() {
+	long long scale = 1, differ = 0;
+	for (int digits = 1; digits <= 3; ++digits) {
+		scale *= 10;
+		const long long unit = 1000000000LL / scale;
+		for (long long k = 1; k < scale; ++k) {
+			double x = static_cast<double>(k) / static_cast<double>(scale);
+			timespec_t n(x);
+			times_old::timespec_t o(x);
+			CHECK(n.tv_sec == 0 && n.tv_nsec == k * unit);
+			if (o.tv_nsec != n.tv_nsec) {
+				CHECK(wide_long_double);
+				CHECK(o.tv_sec == 0 && o.tv_nsec == n.tv_nsec - 1);
+				++differ;
+			}
+		}
+	}
+	if (wide_long_double) CHECK(differ > 100);
+	std::printf("times decimals OK: new == the decimal; %lld of 1107 differ from the old on this platform\n", differ);
 }
 
 
@@ -111,6 +155,7 @@ static void test_scaling() {
 
 int main() {
 	test_constructor();
+	test_decimals();
 	test_scaling();
 	std::printf("all times differential tests passed\n");
 	return 0;

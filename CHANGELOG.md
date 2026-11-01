@@ -16,6 +16,16 @@ releases, so entries are dated.
   on every supported platform, so `timespec_t(3e9)` is `tv_sec = 3000000000`, `tv_nsec = 0`.
   `*` and `/`, which build their result through that constructor, keep large values too:
   `timespec_t(3e9) * 2.0` is 6e9 s.
+- The fraction is scaled in `double` on every platform. The constructor scaled it in
+  `long double`, which on x86 (80-bit) came out one nanosecond short for about half of the
+  decimal fractions: `timespec_t(0.3)` had `tv_nsec = 299999999` (0.6 and 0.7 likewise), so
+  `timespec_t(0.3) + timespec_t(0.7)` was 999999998 ns and not one second. arm64, whose
+  `long double` is a `double`, gave 300000000. A decimal with one to three digits now gives
+  the nanoseconds it says on both (all 1107 of them; with four or more digits about 2% come
+  out one nanosecond short, as they did on arm64). Of 1,111,104 decimals of one to six digits,
+  536,298 changed on x86 and none on arm64. The test asserts the decimals and, on a platform
+  with a wide `long double`, that the old result is one nanosecond short exactly where it
+  differs.
 - A negative non-integral `double` builds a normalized value. The constructor stored the
   fraction of `-0.5` as `tv_sec = 0`, `tv_nsec = -500000000`, so it compared unequal to
   the same instant made by arithmetic (`timespec_t(0.5) - timespec_t(1.0)` is
@@ -35,20 +45,36 @@ releases, so entries are dated.
   for `|a| < 2^20`, with `std::chrono::duration_cast`); every multiple of 1/8 from -20 to
   20 against 1/8-second steps by `+=` and `-=`, in order and by equality; 100,000
   random pairs with seconds up to 4e9 for `+`, `-` and the six comparisons against
-  `std::chrono::nanoseconds` arithmetic; `*` and `/` beyond `int`; and a deadline
-  `now() + 1e9 s` through a double.
+  `std::chrono::nanoseconds` arithmetic; `*` and `/` beyond `int`; a deadline
+  `now() + 1e9 s` through a double; and every decimal of one to three digits (1107 values,
+  both signs) against the nanoseconds it says, plus `0.3 + 0.7 == 1.0`, which fail on x86
+  against the old header (299999999 ns for 0.3).
 - `test/rvalue_compare.cc` (`times_rvalue_compare`): `0.5 < now()` and the other five
   operators with a temporary, a `const` object and a result of arithmetic, and a grid of
   289 pairs that agree with the member operators.
 - `test/diff.cc` (`times_diff`): the constructor, `*` and `/` against the frozen old
   code in `test/old/`. For `0 <= x < 2^31` and for negative integers the fields are
   identical (about 600,000 inputs); `*` and `/` give identical fields for results in
-  range. One class differs: a negative value with a fraction of a nanosecond or more,
+  range. Two classes differ: a negative value with a fraction of a nanosecond or more,
   where the old `tv_nsec` was negative and the new one is folded (the value, within 1e-6 s,
-  is the same, and the old value folded by an addition of zero is the new value). Values
-  with `|x| >= 2^31` are not run against the old code, which is undefined there.
+  is the same, and the old value folded by an addition of zero is the new value); and, on a
+  platform whose `long double` is wider than `double` (x86), a decimal that the old
+  `long double` product left one nanosecond short, where the test asserts old == new - 1
+  and new == the decimal (the other classes allow that nanosecond there). Values with
+  `|x| >= 2^31` are not run against the old code, which is undefined there.
 - The tests that use `assert` keep it live under `NDEBUG`, so the README's Release build
   runs them; the new tests use their own `CHECK`.
+
+### Changed
+
+- `_adjust()` compares and adds with the integer constant `1000000000L`; it used `1e9L`, a
+  `long double`, so every `+=` and `-=` converted `tv_nsec` through the floating-point unit.
+  Results are identical.
+- `*=` and `/=` no longer call `_adjust()` after building the result: the constructor
+  already leaves `tv_nsec` in `[0, 1e9)`.
+- The constructor has three shapes with the same value, chosen by target
+  (`TIMES_CTOR_SHAPE`, see Performance). The tests that check values run each shape on every
+  platform (`times_large_seconds_shape0` to `_shape2`, `times_diff_shape0` to `_shape2`).
 
 ### Performance
 
@@ -60,23 +86,35 @@ Nanoseconds per operation:
 
 | row | M4 old | M4 new | ratio | i9 old | i9 new | ratio |
 |---|---|---|---|---|---|---|
-| `+= / -=` pair | 3.378 | 3.358 | 0.99 | 5.509 | 5.577 | 1.01 |
-| `as_double()` | 0.541 | 0.541 | 1.00 | 1.143 | 1.090 | 0.95 |
-| `now()` | 12.20 | 12.12 | 0.99 | 24.47 | 23.42 | 0.96 |
-| `timespec_t * double` | 0.940 | 1.330 | 1.41 | 5.122 | 4.783 | 0.93 |
-| `timespec_t / double` | 1.092 | 1.401 | 1.28 | 5.848 | 5.485 | 0.94 |
-| `double < timespec_t` | 0.718 | 0.823 | 1.15 | 2.207 | 2.238 | 1.01 |
-| `timespec_t(double)`, array of values in [0, 2^31) | 0.316 | 0.448 | 1.42 | 1.176 | 1.631 | 1.39 |
-| `timespec_t(double)`, array of values in (-2^31, 0] | 0.317 | 0.446 | 1.41 | 1.162 | 1.935 | 1.67 |
-| `timespec_t(double)`, each input from the previous result, positive | 10.91 | 9.00 | 0.83 | 12.02 | 12.33 | 1.03 |
-| `timespec_t(double)`, each input from the previous result, negative | 10.71 | 9.03 | 0.84 | 12.03 | 12.73 | 1.06 |
+| `+= / -=` pair | 3.617 | 2.639 | 0.73 | 5.469 | 5.283 | 0.97 |
+| `as_double()` | 0.572 | 0.569 | 0.99 | 1.132 | 1.123 | 0.99 |
+| `now()` | 12.71 | 12.60 | 0.99 | 23.93 | 23.90 | 1.00 |
+| `timespec_t * double` | 0.970 | 0.673 | 0.69 | 5.075 | 4.844 | 0.95 |
+| `timespec_t / double` | 1.120 | 0.708 | 0.63 | 5.768 | 3.313 | 0.57 |
+| `double < timespec_t` | 0.747 | 0.745 | 1.00 | 2.122 | 2.298 | 1.08 |
+| `timespec_t(double)`, array of values in [0, 2^31) | 0.326 | 0.358 | 1.10 | 1.156 | 1.159 | 1.00 |
+| `timespec_t(double)`, array of values in (-2^31, 0] | 0.327 | 0.358 | 1.10 | 1.170 | 1.150 | 0.98 |
+| `timespec_t(double)`, each input from the previous result, positive | 11.68 | 8.91 | 0.76 | 11.89 | 10.48 | 0.88 |
+| `timespec_t(double)`, each input from the previous result, negative | 11.76 | 8.92 | 0.76 | 11.96 | 10.56 | 0.88 |
 
-The first three rows run code this change does not touch. The constructor and the three
-operators built on it differ because the old constructor converted to `int`, which the
-compiler vectorizes over an array on both machines. The new one converts to `time_t`, which
-it still vectorizes on arm64 but not on x86 (SSE2 has no packed double-to-64-bit
-conversion), and folds a negative value, which costs a compare and two adds per element. A
-construction that depends on the previous one, which is how a single call behaves, is 17%
-faster on arm64 and 3% (positive) to 6% (negative) slower on x86. Marking the fold
-`[[unlikely]]` keeps it a predicted branch for a positive value; as a select it made the
-dependent chain 11% slower on x86 (13.50 ns against 12.02).
+The A/A spread in this run is 2% or less. `as_double()` and `now()` run code this change does not
+touch. `+=` and `-=` are faster because `_adjust()` compares with integer constants, where
+`1e9L` made every call an x87 operation on x86 and a double conversion on arm64; `*` and `/`
+gain that and drop a second `_adjust()` after a constructor that already normalizes. The
+constructor over an array of M4 values is 10% slower: the old loop vectorized because it did
+not normalize a negative value (4 vector operations per pair of values, the borrow, that the
+new one adds) and converted through `int`. On the i9 `double < timespec_t` is 8% slower: the
+comparison reads the seconds first, which now wait for the nanosecond conversion that
+produces the borrow.
+
+The constructor has three shapes with the same value (`TIMES_CTOR_SHAPE`), chosen by
+measuring the array row on both machines (ratio to the old code on the M4 and the i9): one
+64-bit conversion and its inverse, the portable shape (1.10, 1.43); a `trunc` instruction
+with 64-bit lanes, the arm64 default (1.09, 1.25); and a `trunc` with a 32-bit nanosecond
+count, the x86 default with SSE4.1, which the compiler converts packed (1.19, 1.00). Three
+other forms were measured and dropped. A `[[unlikely]]` branch for the borrow, the previous
+version, keeps the loop from vectorizing (1.41, 1.39). A `floor`, which needs no borrow,
+rounds a negative value to the nanosecond below, so `timespec_t(-0.8)` had `tv_nsec =
+199999999` where the decimal says 200000000, for 214 of the 1107 decimals of one to three
+digits that the truncation gives exactly. Converting the seconds as two 32-bit halves was
+1.5 times slower on x86 for the array and 1.4 times slower for a chain.

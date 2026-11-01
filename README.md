@@ -17,8 +17,9 @@ arithmetic on it.
 - **Still a `timespec`:** `timespec_t` adds methods and operators, no fields, so a
   pointer to one is a `struct timespec*`.
 - **Seconds in and out:** `timespec_t(1.5)` and `as_double()`. The whole seconds go
-  into the 64-bit `tv_sec`, so Unix times past 2038 fit; a negative value is stored
-  with `tv_nsec` in `[0, 1e9)` and a negative `tv_sec`.
+  into the 64-bit `tv_sec`, so Unix times past 2038 fit; the fraction is scaled in
+  `double` on every platform, so `timespec_t(0.3)` is 300000000 ns everywhere; a negative
+  value is stored with `tv_nsec` in `[0, 1e9)` and a negative `tv_sec`.
 - **Arithmetic:** `+` and `-` between two values, `*` and `/` by a `double` factor,
   each normalized so a carry or borrow lands in `tv_sec`.
 - **Comparisons:** `<`, `<=`, `>`, `>=`, `==` and `!=`, including a `double` on the

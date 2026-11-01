@@ -22,9 +22,13 @@ the raw `tv_sec` / `tv_nsec` fields and can be passed straight to `clock_gettime
 On top of that it adds value semantics:
 
 - A default constructor that zeroes the fields, and an explicit `double`
-  constructor that splits a seconds count into whole seconds (a `time_t` in `tv_sec`)
-  and the fractional remainder, truncated to nanoseconds (`tv_nsec`); a negative value
-  then borrows one second, so `tv_nsec` ends in `[0, 1e9)`.
+  constructor that splits a seconds count into whole seconds (64 bits, in `tv_sec`) and the
+  fractional remainder, scaled in `double` and truncated to nanoseconds (`tv_nsec`); a
+  negative value then borrows one second, so `tv_nsec` ends in `[0, 1e9)`. The borrow is
+  arithmetic (`ns >> 63` selects it), not a branch, so a loop of constructions vectorizes.
+  The split has three shapes with the same value (`TIMES_CTOR_SHAPE`): a 64-bit conversion
+  and its inverse, a `trunc` with 64-bit lanes on arm64, and a `trunc` with a 32-bit
+  nanosecond count on x86 with SSE4.1, each the one the compiler vectorizes best there.
 - `set_now()` calls `clock_gettime(CLOCK_REALTIME, this)` in place; the free
   `now()` is just a `timespec_t` that has had `set_now()` called on it.
 - `as_double()` reassembles the two fields into a single `double`.
@@ -37,9 +41,9 @@ fields directly and then call `_adjust()`, which walks `tv_nsec` back into the
 decrements `tv_sec` (a borrow), and while it is at or past `1e9` it subtracts and
 increments `tv_sec` (a carry). Without this, adding `0.6 s` and `0.7 s` would leave
 `tv_nsec` at `1.3e9`, an out-of-range `timespec`. `*=` and `/=` take a plain
-`double` and scale the whole duration (via `as_double()`), then normalize the same
-way. The binary operators (`+`, `-`, `*`, `/`) are written in terms of the in-place
-forms, so they get the same normalization. The test pins this by adding two
+`double` and scale the whole duration (via `as_double()`) through the constructor, which
+leaves `tv_nsec` in `[0, 1e9)`. The binary operators (`+`, `-`, `*`, `/`) are written in
+terms of the in-place forms, so they get the same normalization. The test pins this by adding two
 sub-second values whose nanosecond parts overflow and checking the carry lands in
 `tv_sec`.
 

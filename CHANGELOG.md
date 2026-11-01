@@ -49,3 +49,34 @@ releases, so entries are dated.
   with `|x| >= 2^31` are not run against the old code, which is undefined there.
 - The tests that use `assert` keep it live under `NDEBUG`, so the README's Release build
   runs them; the new tests use their own `CHECK`.
+
+### Performance
+
+Apple M4 Pro (arm64) and Intel i9-9980HK (x86_64), Apple clang 17, `-O2`, 4096 inputs per
+row, best of 9 runs of about 15 ms, best of 5 rounds, each binary run twice (the second copy
+of the old code, the A/A column, differs by at most about 3%), under an exclusive hold. The inputs
+are read through an opaque pointer so a row cannot be hoisted out of its repetitions.
+Nanoseconds per operation:
+
+| row | M4 old | M4 new | ratio | i9 old | i9 new | ratio |
+|---|---|---|---|---|---|---|
+| `+= / -=` pair | 3.378 | 3.358 | 0.99 | 5.509 | 5.577 | 1.01 |
+| `as_double()` | 0.541 | 0.541 | 1.00 | 1.143 | 1.090 | 0.95 |
+| `now()` | 12.20 | 12.12 | 0.99 | 24.47 | 23.42 | 0.96 |
+| `timespec_t * double` | 0.940 | 1.330 | 1.41 | 5.122 | 4.783 | 0.93 |
+| `timespec_t / double` | 1.092 | 1.401 | 1.28 | 5.848 | 5.485 | 0.94 |
+| `double < timespec_t` | 0.718 | 0.823 | 1.15 | 2.207 | 2.238 | 1.01 |
+| `timespec_t(double)`, array of values in [0, 2^31) | 0.316 | 0.448 | 1.42 | 1.176 | 1.631 | 1.39 |
+| `timespec_t(double)`, array of values in (-2^31, 0] | 0.317 | 0.446 | 1.41 | 1.162 | 1.935 | 1.67 |
+| `timespec_t(double)`, each input from the previous result, positive | 10.91 | 9.00 | 0.83 | 12.02 | 12.33 | 1.03 |
+| `timespec_t(double)`, each input from the previous result, negative | 10.71 | 9.03 | 0.84 | 12.03 | 12.73 | 1.06 |
+
+The first three rows run code this change does not touch. The constructor and the three
+operators built on it differ because the old constructor converted to `int`, which the
+compiler vectorizes over an array on both machines. The new one converts to `time_t`, which
+it still vectorizes on arm64 but not on x86 (SSE2 has no packed double-to-64-bit
+conversion), and folds a negative value, which costs a compare and two adds per element. A
+construction that depends on the previous one, which is how a single call behaves, is 17%
+faster on arm64 and 3% (positive) to 6% (negative) slower on x86. Marking the fold
+`[[unlikely]]` keeps it a predicted branch for a positive value; as a select it made the
+dependent chain 11% slower on x86 (13.50 ns against 12.02).

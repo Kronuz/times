@@ -87,7 +87,7 @@ struct timespec_t : public timespec {
 	explicit timespec_t(double other) {
 		tv_sec = (time_t)other;
 		tv_nsec = (int)((other - (double)tv_sec) * 1e9L);   // |fraction| < 1 s: fits an int
-		if (tv_nsec < 0) {
+		if (tv_nsec < 0) [[unlikely]] {
 			tv_nsec += 1000000000L;
 			--tv_sec;
 		}

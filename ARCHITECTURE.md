@@ -22,8 +22,9 @@ the raw `tv_sec` / `tv_nsec` fields and can be passed straight to `clock_gettime
 On top of that it adds value semantics:
 
 - A default constructor that zeroes the fields, and an explicit `double`
-  constructor that splits a seconds count into whole seconds (`tv_sec`) and the
-  fractional remainder scaled to nanoseconds (`tv_nsec`).
+  constructor that splits a seconds count into whole seconds (a `time_t` in `tv_sec`)
+  and the fractional remainder, truncated to nanoseconds (`tv_nsec`); a negative value
+  then borrows one second, so `tv_nsec` ends in `[0, 1e9)`.
 - `set_now()` calls `clock_gettime(CLOCK_REALTIME, this)` in place; the free
   `now()` is just a `timespec_t` that has had `set_now()` called on it.
 - `as_double()` reassembles the two fields into a single `double`.
@@ -48,7 +49,8 @@ The comparison operators go through one macro, `_timespec_cmp`, which compares
 `tv_sec` first and falls back to `tv_nsec` only on a tie. The full set
 (`< <= > >= == !=`) exists both as members (two `timespec_t`) and as free
 functions taking a `double` on the left, so `0.5 < ts` reads naturally; those free
-forms just wrap the left operand in a `timespec_t` and defer to the member
+forms take `const timespec_t&` (a temporary or a `const` object binds, as in
+`0.5 < now()`), wrap the left operand in a `timespec_t` and defer to the member
 comparison.
 
 ## Feature detection: replacing config.h

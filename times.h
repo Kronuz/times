@@ -81,9 +81,16 @@ struct timespec_t : public timespec {
 		clear();
 	}
 
+	// Whole seconds into the 64-bit tv_sec and the fraction, truncated to nanoseconds, into
+	// tv_nsec; a negative value then borrows one second, so tv_nsec is in [0, 1e9).
+	// `other` must be finite and within the range of time_t, as for std::chrono::duration_cast.
 	explicit timespec_t(double other) {
-		tv_nsec = (int)((other - (int)other) * 1e9L);
-		tv_sec = (int)other;
+		tv_sec = (time_t)other;
+		tv_nsec = (int)((other - (double)tv_sec) * 1e9L);   // |fraction| < 1 s: fits an int
+		if (tv_nsec < 0) {
+			tv_nsec += 1000000000L;
+			--tv_sec;
+		}
 	}
 
 	inline void clear() noexcept {
@@ -200,31 +207,31 @@ inline timespec_t now() {
 }
 
 
-inline bool operator<(double dt0, timespec_t& ts1) {
+inline bool operator<(double dt0, const timespec_t& ts1) {
 	return timespec_t(dt0) < ts1;
 }
 
 
-inline bool operator<=(double dt0, timespec_t& ts1) {
+inline bool operator<=(double dt0, const timespec_t& ts1) {
 	return timespec_t(dt0) <= ts1;
 }
 
 
-inline bool operator>(double dt0, timespec_t& ts1) {
+inline bool operator>(double dt0, const timespec_t& ts1) {
 	return timespec_t(dt0) > ts1;
 }
 
 
-inline bool operator>=(double dt0, timespec_t& ts1) {
+inline bool operator>=(double dt0, const timespec_t& ts1) {
 	return timespec_t(dt0) >= ts1;
 }
 
 
-inline bool operator==(double dt0, timespec_t& ts1) {
+inline bool operator==(double dt0, const timespec_t& ts1) {
 	return timespec_t(dt0) == ts1;
 }
 
 
-inline bool operator!=(double dt0, timespec_t& ts1) {
+inline bool operator!=(double dt0, const timespec_t& ts1) {
 	return timespec_t(dt0) != ts1;
 }

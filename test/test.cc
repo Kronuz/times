@@ -8,6 +8,7 @@
 // so the timing checks use loose bounds to stay flake-free.
 //
 // Build via CMake: cmake -B build && cmake --build build && ctest --test-dir build
+#undef NDEBUG   // these checks are asserts: keep them live in a Release build
 #include <cassert>
 #include <cmath>
 #include <cstdio>

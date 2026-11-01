@@ -40,4 +40,11 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
   add_executable(times_test test/test.cc)
   target_link_libraries(times_test PRIVATE times)
   add_test(NAME times COMMAND times_test)
+  # One executable per claim, so a failure names it: seconds beyond int and negative values,
+  # a double compared on the left with a temporary, and the old constructor as a reference.
+  foreach(name large_seconds rvalue_compare diff)
+    add_executable(times_${name} test/${name}.cc)
+    target_link_libraries(times_${name} PRIVATE times)
+    add_test(NAME times_${name} COMMAND times_${name})
+  endforeach()
 endif()

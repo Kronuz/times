@@ -12,7 +12,11 @@ The surface:
 
 - **`timespec_t`** derives from `timespec`, so it still has the raw `tv_sec` /
   `tv_nsec` fields. Construct it empty (zeroed), or from a `double` number of
-  seconds (`timespec_t(3.25)` is 3 s + 250 ms).
+  seconds (`timespec_t(3.25)` is 3 s + 250 ms). The whole seconds go into `tv_sec`
+  (a `time_t`, 64 bits wherever `time_t` is), the fraction truncates to nanoseconds, and
+  a negative value is stored with `tv_nsec` in `[0, 1e9)`: `timespec_t(-0.5)` is
+  `tv_sec = -1`, `tv_nsec = 500000000`. The `double` must be finite and within the range
+  of `time_t`.
 - **`now()`** returns a `timespec_t` set to `CLOCK_REALTIME`.
 - **`set_now()`** refreshes an existing `timespec_t` from the clock.
 - **`as_double()`** collapses it back to a `double` count of seconds.
@@ -22,7 +26,8 @@ The surface:
   field back into the `[0, 1e9)` range after every operation so a carry or borrow
   lands in `tv_sec`.
 - **Comparisons:** the full `< <= > >= == !=` set, both between two `timespec_t`
-  and with a plain `double` on the left-hand side (`0.5 < ts`).
+  and with a plain `double` on the left-hand side. The right-hand `timespec_t` can be a
+  named value, a `const` one or a temporary (`0.5 < ts`, `0.5 < now()`).
 
 ## Usage
 

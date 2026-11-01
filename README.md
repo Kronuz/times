@@ -16,11 +16,13 @@ arithmetic on it.
 
 - **Still a `timespec`:** `timespec_t` adds methods and operators, no fields, so a
   pointer to one is a `struct timespec*`.
-- **Seconds in and out:** `timespec_t(1.5)` and `as_double()`.
+- **Seconds in and out:** `timespec_t(1.5)` and `as_double()`. The whole seconds go
+  into the 64-bit `tv_sec`, so Unix times past 2038 fit; a negative value is stored
+  with `tv_nsec` in `[0, 1e9)` and a negative `tv_sec`.
 - **Arithmetic:** `+` and `-` between two values, `*` and `/` by a `double` factor,
   each normalized so a carry or borrow lands in `tv_sec`.
 - **Comparisons:** `<`, `<=`, `>`, `>=`, `==` and `!=`, including a `double` on the
-  left (`0.5 < ts`).
+  left of a named, `const` or temporary value (`0.5 < now()`).
 - **`now()` and `set_now()`** read `CLOCK_REALTIME`, with a Mach fallback on macOS
   systems that lack `clock_gettime`.
 
@@ -36,7 +38,8 @@ int main() {
 	timespec_t total = timespec_t(0.6) + timespec_t(0.7);
 	std::printf("%.1f s\n", total.as_double());        // 1.3 s, nanoseconds carried
 	std::printf("%.2f s\n", (total * 0.5).as_double()); // 0.65 s
-	std::printf("%d\n", 0.5 < deadline);               // 1
+	std::printf("%d\n", now() < deadline);             // 1
+	std::printf("%d\n", 0.5 < now());                  // 1, a double on the left of a temporary
 }
 ```
 
@@ -68,11 +71,10 @@ Not for:
 - Measuring elapsed time: `now()` reads the wall clock, which jumps when it is set or
   stepped; use `std::chrono::steady_clock`.
 - Code with no `timespec` in sight: `std::chrono` is the standard choice.
-- Seconds beyond the range of `int`: `timespec_t(double)` converts the whole seconds
-  through `int`, so a value past about 2.1e9 s (a Unix time after January 2038) does not
-  fit. `*` and `/` go through the same conversion.
-- A `double` compared with a temporary: the `double`-first comparisons take a
-  `timespec_t&`, so `0.5 < now()` does not compile; store the value first.
+- Nanosecond-exact scaling or conversion of large values: `timespec_t(double)`,
+  `as_double()`, `*` and `/` go through a `double`, which resolves about 0.24 µs at the
+  current Unix time (1.8e9 s) and 1 ns or better below 97 days. A `double` must be
+  finite and within the range of `time_t`.
 
 ## 📚 Documentation
 

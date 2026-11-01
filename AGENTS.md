@@ -12,7 +12,11 @@ times.h                      timespec_t (timespec subclass), now(), set_now/as_d
 times.cc                     macOS Mach fallback definition of clock_gettime; compiles to nothing when HAVE_CLOCK_GETTIME is set. From Xapiand (BSD-licensed fragment, MM Weiss).
 times_config.h.in            Template for the generated feature-detection header. CMake configure_file's it.
 test/test.cc                 Runnable smoke test: clock advance, elapsed via subtraction, double round-trip, nanosecond carry, comparisons, clear().
-CMakeLists.txt               STATIC library `times` (+ alias times::times); check_symbol_exists + configure_file feature detection; CTest test `times`.
+test/large_seconds.cc        Seconds past int, negative values, +/-/comparisons and * / beyond int, against decimal tables, exact integer arithmetic and std::chrono.
+test/rvalue_compare.cc       A double on the left of a temporary and of a const timespec_t (`0.5 < now()`).
+test/diff.cc                 The constructor, * and / against the frozen old code (test/old/); the one result class that differs is listed and asserted.
+test/check.h                 CHECK(), which stays live under NDEBUG.
+CMakeLists.txt               STATIC library `times` (+ alias times::times); check_symbol_exists + configure_file feature detection; CTest tests `times`, `times_large_seconds`, `times_rvalue_compare`, `times_diff`.
 LICENSE                      MIT, Copyright (c) 2015-2018 Dubalu LLC.
 README.md                    What it is, install, quick start.
 docs/API.md                  What it provides and usage.
@@ -38,7 +42,9 @@ cmake -B build -DCMAKE_CXX_COMPILER=$(brew --prefix llvm)/bin/clang++ \
 ```
 
 Expected output ends with `all times tests passed`, exit 0. The test target is
-`times_test`; the registered CTest name is `times`.
+`times_test`; the registered CTest names are `times`, `times_large_seconds`,
+`times_rvalue_compare` and `times_diff`. `test/test.cc` undefines `NDEBUG` so its
+`assert`s run in a Release build; the other tests use `CHECK`.
 
 ## Conventions
 
@@ -60,13 +66,17 @@ Expected output ends with `all times tests passed`, exit 0. The test target is
   `tv_sec` / `tv_nsec` fields stay public (inherited) so the object can be passed
   straight to `clock_gettime`. Don't turn it into a class with private fields; the
   `set_now()` call passes `this` to a C API expecting a `struct timespec *`.
-- **Every arithmetic op normalizes via `_adjust()`.** After touching `tv_nsec`,
-  the nanosecond field must be walked back into `[0, 1e9)` with the overflow
-  carried into `tv_sec`. If you add an operator, call `_adjust()` the same way, or
-  you will produce out-of-range `timespec` values.
+- **Every arithmetic op normalizes via `_adjust()`, and the `double` constructor folds
+  its fraction the same way.** After touching `tv_nsec`, the nanosecond field must be
+  walked back into `[0, 1e9)` with the overflow carried into `tv_sec`. If you add an
+  operator, call `_adjust()` the same way, or you will produce out-of-range `timespec`
+  values. A negative `double` truncates to a negative `tv_nsec`, which the constructor
+  borrows one second for.
+- **Seconds are a `time_t`, never an `int`.** The constructor converts the whole seconds
+  with `(time_t)`; an `int` there wraps or saturates past 2038.
 - **Comparisons go through `_timespec_cmp`:** seconds first, nanoseconds only on a
   tie. Keep both the member forms and the free `double`-lhs forms in sync; they
-  must agree.
+  must agree. The free forms take `const timespec_t&`, so a temporary binds.
 - **`HAVE_CLOCK_GETTIME` comes from the generated header, not a hand-edit.** It is
   produced by CMake's `check_symbol_exists` into `times_config.h`. Don't hard-code
   it in `times.h` or `times.cc`.
@@ -98,6 +108,11 @@ exactly as it was when `config.h` came from the parent project.
   anchor keeps the translation unit non-empty and the archive linkable. Don't
   remove it, and don't "fix" the empty look by deleting the file; on a platform
   without `clock_gettime` it provides the only definition of the fallback.
+- **A `double` carries 53 bits.** `timespec_t(double)`, `as_double()`, `*` and `/` round
+  to a double's precision: about 0.24 µs at the current Unix time, 1 ns or better below
+  97 days. Do not use them to carry exact nanoseconds; `+`, `-` and the comparisons work
+  on the integer fields and are exact. The constructor is undefined for a NaN, an
+  infinity or a value outside the range of `time_t`, as `std::chrono::duration_cast` is.
 - **The `double` constructor is `explicit`.** `timespec_t(3.25)` works, but a bare
   `3.25` won't implicitly convert in a `timespec_t` context. The free comparison
   operators exist precisely so `double`-vs-`timespec_t` comparisons still read
@@ -113,11 +128,13 @@ exactly as it was when `config.h` came from the parent project.
 
 This is a standalone extraction from
 [Xapiand](https://github.com/Kronuz/Xapiand). The time logic in `times.h` and the
-Mach fallback in `times.cc` are close to the original, with three deltas: the
+Mach fallback in `times.cc` are close to the original, with four deltas: the
 `config.h` -> generated `times_config.h` include swap described above, the one-line
-anchor symbol in `times.cc` that keeps the static archive linkable on macOS, and the
-`*`/`/` operators, which now scale by a scalar (the upstream versions multiplied the
-fields componentwise, and `operator/` was a copy of `operator*`). Keep the rest that
+anchor symbol in `times.cc` that keeps the static archive linkable on macOS, the
+`*`/`/` operators, which scale by a scalar (the upstream versions multiplied the
+fields componentwise, and `operator/` was a copy of `operator*`), and the `double`
+constructor and the `double`-lhs comparisons, which use `time_t` seconds, normalize a
+negative value and take `const timespec_t&` (see `CHANGELOG.md`). Keep the rest that
 way so changes here stay reconcilable
 with upstream as a plain edit. The Mach fallback in `times.cc` carries a separate
 BSD-style copyright (MM Weiss), retained in that file.

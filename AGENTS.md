@@ -47,6 +47,36 @@ Expected output ends with `all times tests passed`, exit 0. The test target is
 fourth. `test/test.cc` undefines `NDEBUG` so its
 `assert`s run in a Release build; the other tests use `CHECK`.
 
+## Verification and benchmarks
+
+The method shared by the Kronuz libraries is in
+[docs/PERFORMANCE.md](https://github.com/Kronuz/cpp-libraries/blob/main/docs/PERFORMANCE.md).
+
+- **Tests.** `cmake -B build && cmake --build build && ctest --test-dir build` runs ten CTest
+  tests. The `_shape0` to `_shape2` copies of `times_large_seconds` and `times_diff` force each
+  `TIMES_CTOR_SHAPE`, so every constructor shape is checked on every platform.
+- **Differential.** `times_diff` (`test/diff.cc`) compares the constructor, `*` and `/` with the
+  frozen code of `d762ec6` in `test/old/times_old.h` (never edited). The result classes and what
+  the test asserts on each are listed at its top: identical fields where the old code was defined
+  and right, the same value with folded fields for a negative fraction, and on x86 the decimal
+  where the old `long double` product was one nanosecond short.
+- **Oracles.** `times_large_seconds` checks against decimal tables, exact 64-bit integer
+  arithmetic and `std::chrono` (`duration_cast`, `nanoseconds` arithmetic);
+  `times_rvalue_compare` checks the free comparisons against the member operators.
+- **Sanitizers.** CI (`.github/workflows/ci.yml`, which calls the shared
+  [cmake.yml](https://github.com/Kronuz/cpp-libraries/blob/main/.github/workflows/cmake.yml))
+  runs every test in an ASan+UBSan build and a TSan build, with clang on Linux. The ASan+UBSan
+  job is:
+
+  ```sh
+  CC=clang CXX=clang++ cmake -B build-asan -DCMAKE_BUILD_TYPE=Debug \
+    -DCMAKE_CXX_FLAGS="-fsanitize=address,undefined -fno-sanitize-recover=undefined -fno-omit-frame-pointer -D_GLIBCXX_ASSERTIONS" \
+    -DCMAKE_EXE_LINKER_FLAGS="-fsanitize=address,undefined"
+  cmake --build build-asan && ASAN_OPTIONS=detect_leaks=1 ctest --test-dir build-asan --output-on-failure
+  ```
+
+- **Not here.** The repository has no benchmark target, fuzz target or mutation script.
+
 ## Conventions
 
 - **C++20.** The target requests `cxx_std_20` to stay uniform with the sibling
@@ -79,8 +109,9 @@ fourth. `test/test.cc` undefines `NDEBUG` so its
   conversion and its inverse (any target), a `trunc` instruction with 64-bit lanes (arm64),
   and a `trunc` with a 32-bit nanosecond count (x86 with SSE4.1). They exist because the
   compiler vectorizes a loop of constructions only with the shape that fits the target;
-  measure the array and the dependent-chain rows of `campaign/perf/time-fixround` before
-  changing one. Each value test runs every shape on every platform
+  measure the array and the dependent-chain rows of the 2026-11-01 Performance table in
+  `CHANGELOG.md` on arm64 and x86-64 before changing one. Each value test runs every shape
+  on every platform
   (`times_large_seconds_shape0` to `_shape2`, `times_diff_shape0` to `_shape2`).
 - **The borrow is arithmetic, not a branch.** `ns >> 63` (or `>> 31`) selects it, so a loop
   of constructions vectorizes; a `[[unlikely]]` branch there kept it scalar and 40% slower.

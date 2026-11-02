@@ -26,9 +26,11 @@ On top of that it adds value semantics:
   fractional remainder, scaled in `double` and truncated to nanoseconds (`tv_nsec`); a
   negative value then borrows one second, so `tv_nsec` ends in `[0, 1e9)`. The borrow is
   arithmetic (`ns >> 63` selects it), not a branch, so a loop of constructions vectorizes.
-  The split has three shapes with the same value (`TIMES_CTOR_SHAPE`): a 64-bit conversion
-  and its inverse, a `trunc` with 64-bit lanes on arm64, and a `trunc` with a 32-bit
-  nanosecond count on x86 with SSE4.1, each the one the compiler vectorizes best there.
+  The split has three shapes with the same value (`TIMES_CTOR_SHAPE`): a `trunc` with 64-bit
+  arithmetic (the default on arm64 and on x86 with SSE4.1: the fewest instructions for one
+  construction), the same with a 32-bit nanosecond count (which x86 converts packed in a loop
+  over an array, and pays two sign extensions for one construction), and a 64-bit conversion
+  and its inverse for any other target.
 - `set_now()` calls `clock_gettime(CLOCK_REALTIME, this)` in place; the free
   `now()` is just a `timespec_t` that has had `set_now()` called on it.
 - `as_double()` reassembles the two fields into a single `double`.

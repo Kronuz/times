@@ -4,6 +4,50 @@ All notable changes to `times`. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the library has no
 releases, so entries are dated.
 
+## 2026-11-01, the constructor for one value
+
+### Changed
+
+The final gate (START `666dfdd`) put two `timespec_t(double)` rows of a scalar loop on the i9 at 0.82 to
+0.83 ("chain through `tv_nsec`"), `double < timespec_t` at 0.93 and the constructor over an array at 0.92 on
+the M4. The cause of the first two is not a latency chain: the compare with `LONG_MAX` that the row used to
+carry the dependence compiles to `cmp; je`, a predicted branch, so the row timed the throughput of a loop
+that builds one value per iteration. That is what the x86 shape got wrong: its 32-bit nanosecond count, which
+x86 converts packed over an array, costs two sign extensions (`movslq`) per construction, 15 to 18% on a loop
+of single constructions. A real chain through `tv_nsec` (`x = p[i] + tv_nsec * 0.0`) was already 11 to 13%
+faster than START on the i9 and 33% on the M4.
+
+- **The default shape on x86 with SSE4.1 is the 64-bit one**, the shape arm64 already had (`trunc`, a 64-bit
+  nanosecond count, the borrow as `ns >> 63`); the seconds come from `(long long)other`, which does not wait for
+  the `trunc`. The 32-bit shape stays selectable (`TIMES_CTOR_SHAPE=1`), with the same seconds.
+- **Not kept.** Unsigned arithmetic on the 32-bit shape (no sign extensions) compiles to the same code as the
+  signed one but one `shr` and one `sub` longer than the 64-bit shape: scalar rows 0.93 to 0.95 of START, array
+  1.18. A ternary borrow is 0.69 on the i9 array, and a multiplication by 1e9 for the borrow compiles to the same
+  code. The portable shape is 0.69 there too.
+
+Ratio START / new of the gate's micro-benchmark (the loop of single constructions is also in `bench/bench.cc`), one
+strict hold per machine, four rounds of START, new, START, the A/A within 1.4% (above 1 is faster):
+
+| row | M4 Pro before | M4 Pro after | i9 before | i9 after |
+| --- | --- | --- | --- | --- |
+| loop of single constructions, positive | 1.00 | 1.00 | 0.85 | 1.00 |
+| loop of single constructions, negative | 1.00 | 0.99 | 0.82 | 0.98 |
+| chain through `tv_nsec` (data), positive | 1.34 | 1.34 | 1.11 | 1.16 |
+| chain through `as_double()`, positive | 1.22 | 1.25 | 1.09 | 1.06 |
+| `double < timespec_t` | 1.01 | 1.02 | 0.93 | 1.02 |
+| `timespec_t * double` | 1.46 | 1.45 | 1.50 | 1.14 |
+| `timespec_t / double` | 1.64 | 1.60 | 1.70 | 1.16 |
+| array of values in [0, 2^31) | 0.92 | 0.92 | 1.00 | 0.89 |
+| array of values in (-2^31, 0] | 0.92 | 0.92 | 1.03 | 0.90 |
+
+Rows left under 0.97, and why. On the M4 the array is 0.92 with every shape tried (six, from the 64-bit
+conversion to a ternary borrow): the old loop vectorized with 9 vector instructions per pair of values, the new
+one has the same count (`frintz`, two `fcvtzs`, the borrow's `cmlt`, `and`, `add` and `ssra`) and runs at 0.20
+cycles more per pair; the borrow is what the correctness fix (a negative fraction folds into `tv_nsec`) adds. On the i9 the array is 0.89 because the
+compiler converts the 64-bit shape one value at a time, where START's x87 loop is already scalar, and `*` and `/`
+lose part of their gain for the same reason (1.5 and 1.7 to 1.14 and 1.16, still faster than START). The 32-bit
+shape has the array at 1.18 and the scalar rows at 0.82 to 0.85; no shape has both.
+
 ## 2026-11-01
 
 ### Fixed

@@ -115,6 +115,31 @@ int main() {
 		}
 		keep(s);
 	}, N));
+	// Independent values, one construction per iteration, both fields kept in registers by an empty asm: the
+	// throughput of a call site that builds one value. The first two rows sum the fields, which lets the
+	// compiler vectorize the loop (the old code's loop did not vectorize on x86 and did on arm64).
+	row("timespec_t(double) scalar loop, positive", bench([&] {
+		const double* p = launder(positive.data());
+		long s = 0;
+		for (std::size_t i = 0; i < N; ++i) {
+			timespec_t t(p[i]);
+			long sec = t.tv_sec, ns = t.tv_nsec;
+			asm volatile("" : "+r"(sec), "+r"(ns));
+			s += sec + ns;
+		}
+		keep(s);
+	}, N));
+	row("timespec_t(double) scalar loop, negative", bench([&] {
+		const double* p = launder(negative.data());
+		long s = 0;
+		for (std::size_t i = 0; i < N; ++i) {
+			timespec_t t(p[i]);
+			long sec = t.tv_sec, ns = t.tv_nsec;
+			asm volatile("" : "+r"(sec), "+r"(ns));
+			s += sec + ns;
+		}
+		keep(s);
+	}, N));
 	row("timespec_t * double", bench([&] {
 		const timespec_t* v = launder(values.data());
 		const double* f = launder(factors.data());

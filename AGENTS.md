@@ -118,14 +118,14 @@ The method shared by the Kronuz libraries is in
   borrows one second for.
 - **Seconds are 64 bits, never an `int`.** The constructor converts the whole seconds with
   a 64-bit conversion; an `int` there wraps or saturates past 2038.
-- **The constructor has three shapes with the same value** (`TIMES_CTOR_SHAPE`): a 64-bit
-  conversion and its inverse (any target), a `trunc` instruction with 64-bit lanes (arm64),
-  and a `trunc` with a 32-bit nanosecond count (x86 with SSE4.1). They exist because the
-  compiler vectorizes a loop of constructions only with the shape that fits the target;
-  measure the array and the dependent-chain rows of the 2026-11-01 Performance table in
-  `CHANGELOG.md` on arm64 and x86-64 before changing one. Each value test runs every shape
-  on every platform
-  (`times_large_seconds_shape0` to `_shape2`, `times_diff_shape0` to `_shape2`).
+- **The constructor has three shapes with the same value** (`TIMES_CTOR_SHAPE`): a `trunc`
+  instruction with 64-bit arithmetic (the default on arm64 and on x86 with SSE4.1), the same
+  with a 32-bit nanosecond count (what x86 converts packed over an array; a single construction
+  costs two sign extensions more), and a 64-bit conversion and its inverse (any other target).
+  Measure the scalar-loop, array and dependent-chain rows of `bench/` on both architectures
+  before changing one: the shape that wins the array row loses the scalar row on x86. Each
+  value test runs every shape on every platform (`times_large_seconds_shape0` to `_shape2`,
+  `times_diff_shape0` to `_shape2`).
 - **The borrow is arithmetic, not a branch.** `ns >> 63` (or `>> 31`) selects it, so a loop
   of constructions vectorizes; a `[[unlikely]]` branch there kept it scalar and 40% slower.
   Rounding stays toward zero at the nanosecond, so a negative decimal is the mirror of the

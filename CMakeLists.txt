@@ -47,8 +47,8 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
     target_link_libraries(times_${name} PRIVATE times)
     add_test(NAME times_${name} COMMAND times_${name})
   endforeach()
-  # The constructor has three shapes (TIMES_CTOR_SHAPE), one per kind of target, with the same
-  # value; the two tests that check values run each shape on every platform.
+  # The constructor has three shapes (TIMES_CTOR_SHAPE) with the same value; the two tests that
+  # check values run each shape on every platform.
   foreach(shape 0 1 2)
     foreach(name large_seconds diff)
       add_executable(times_${name}_shape${shape} test/${name}.cc)

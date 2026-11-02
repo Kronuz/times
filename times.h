@@ -36,14 +36,14 @@
 #include <time.h>                  // for clock_gettime, CLOCK_REALTIME
 
 // Which way timespec_t(double) splits a double into seconds and nanoseconds. All three give the
-// same value; they differ in what the compiler can do with a loop of constructions. 1: x86 with
-// SSE4.1 (one trunc instruction, and a 32-bit nanosecond count converts packed); 2: arm64 (one
-// trunc instruction, 64-bit lanes); 0: any other target (a 64-bit conversion and its inverse).
-// Define it to force a shape.
+// same value; they differ in what the compiler can do with it. 2: one trunc instruction and 64-bit
+// arithmetic, the default on x86 with SSE4.1 and on arm64 (the least work for one construction,
+// which is what a call site does); 1: a 32-bit nanosecond count, which the compiler converts packed
+// in a loop over an array on x86, at two sign extensions more for one construction (a scalar loop
+// runs 15% slower than the other two); 0: a 64-bit conversion and its inverse, for any other
+// target. Define it to force a shape.
 #ifndef TIMES_CTOR_SHAPE
-#if defined(__SSE4_1__)
-#define TIMES_CTOR_SHAPE 1
-#elif defined(__aarch64__)
+#if defined(__SSE4_1__) || defined(__aarch64__)
 #define TIMES_CTOR_SHAPE 2
 #else
 #define TIMES_CTOR_SHAPE 0
@@ -105,13 +105,13 @@ struct timespec_t : public timespec {
 		const double w = __builtin_trunc(other);
 		const int ns = (int)((other - w) * 1e9);
 		const int borrow = ns >> 31;
-		tv_sec = (long long)w + borrow;
+		tv_sec = (long long)other + borrow;
 		tv_nsec = ns + (borrow & 1000000000);
 #elif TIMES_CTOR_SHAPE == 2
 		const double w = __builtin_trunc(other);
 		const long long ns = (long long)((other - w) * 1e9);
 		const long long borrow = ns >> 63;
-		tv_sec = (long long)w + borrow;
+		tv_sec = (long long)other + borrow;
 		tv_nsec = ns + (borrow & 1000000000LL);
 #else
 		const long long whole = (long long)other;

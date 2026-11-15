@@ -79,6 +79,8 @@ Not for:
 
 ## 📚 Documentation
 
+- [The Bag of Holding](https://kronuz.github.io/blog/bag-of-holding/):
+  the Familiars post that covers `times` among the small helpers.
 - [docs/API.md](docs/API.md): `timespec_t`, `now()`, the operators and which clock it
   reads.
 - [ARCHITECTURE.md](ARCHITECTURE.md): normalization and the platform fallback.
